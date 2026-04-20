@@ -5,7 +5,7 @@ from datetime import datetime
 import plotly.express as px
 
 st.set_page_config(page_title="Kişisel Finans Asistanı", page_icon="💸", layout="wide")
-API_URL = "http://127.0.0.1:8000"
+API_URL = "https://personalfinanceapp-f3d9.onrender.com"
 
 # --- OTURUM (SESSION) YÖNETİMİ ---
 if "user" not in st.session_state:
