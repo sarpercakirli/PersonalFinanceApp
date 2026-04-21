@@ -220,6 +220,32 @@ def kart_ekle(k: schemas.CreditCardCreate, db: Session = Depends(get_db)):
     return yeni
 
 
+@app.put("/kredi-kartlari/{card_id}")
+def kart_guncelle(card_id: int, card_data: schemas.CreditCardCreate, db: Session = Depends(get_db)):
+    kart = db.query(models.CreditCard).filter(models.CreditCard.card_id == card_id).first()
+    if not kart:
+        return {"hata": "Kart bulunamadı"}
+
+    kart.card_name = card_data.card_name
+    kart.limit_amount = card_data.limit_amount
+    kart.closing_day = card_data.closing_day
+    # due_day varsayılan kalabilir
+
+    db.commit()
+    return {"mesaj": "Kart güncellendi"}
+
+
+@app.delete("/kredi-kartlari/{card_id}")
+def kart_sil(card_id: int, db: Session = Depends(get_db)):
+    kart = db.query(models.CreditCard).filter(models.CreditCard.card_id == card_id).first()
+    if not kart:
+        return {"hata": "Kart bulunamadı"}
+
+    db.delete(kart)
+    db.commit()
+    return {"mesaj": "Kart başarıyla silindi"}
+
+
 # ==========================================
 # 5. ANA ANALİZ MOTORU (User ID Filtreli)
 # ==========================================

@@ -6,6 +6,7 @@ import plotly.express as px
 
 st.set_page_config(page_title="Kişisel Finans Asistanı", page_icon="💸", layout="wide")
 API_URL = "https://personalfinanceapp-f3d9.onrender.com"
+#API_URL = "http://127.0.0.1:8000"
 
 # --- OTURUM (SESSION) YÖNETİMİ ---
 if "user" not in st.session_state:
@@ -428,7 +429,46 @@ else:
                 st.subheader("Tanımlı Kartlar")
                 if kartlar:
                     for k in kartlar:
-                        st.info(f"💳 **{k['card_name']}** | Limit: {k['limit_amount']:,.2f} ₺")
+                        k_id = k['card_id']
+                        with st.container(border=True):
+                            # DÜZENLEME MODU
+                            if st.session_state.get('edit_card_id') == k_id:
+                                d_isim = st.text_input("Kart Adı", value=k['card_name'], key=f"c_n_{k_id}")
+                                d_limit = st.number_input("Limit (₺)", min_value=0.0, value=float(k['limit_amount']),
+                                                          key=f"c_l_{k_id}")
+                                d_kesim = st.number_input("Kesim Günü", min_value=1, max_value=31,
+                                                          value=int(k['closing_day']), key=f"c_c_{k_id}")
+
+                                cb1, cb2 = st.columns(2)
+                                if cb1.button("💾 Kaydet", key=f"c_s_{k_id}", use_container_width=True):
+                                    requests.put(f"{API_URL}/kredi-kartlari/{k_id}",
+                                                 json={"user_id": USER_ID, "card_name": d_isim, "limit_amount": d_limit,
+                                                       "closing_day": d_kesim, "due_day": 1})
+                                    st.session_state['edit_card_id'] = None
+                                    st.rerun()
+
+                                if cb2.button("❌ İptal", key=f"c_i_{k_id}", use_container_width=True):
+                                    st.session_state['edit_card_id'] = None
+                                    st.rerun()
+
+                            # NORMAL GÖRÜNÜM MODU
+                            else:
+                                col_a, col_b = st.columns([3, 1])
+                                col_a.markdown(
+                                    f"💳 **{k['card_name']}**<br><small>Limit: {k['limit_amount']:,.2f} ₺ | Kesim: Her ayın {k['closing_day']}. günü</small>",
+                                    unsafe_allow_html=True)
+
+                                with col_b:
+                                    with st.popover("⋮"):
+                                        if st.button("✏️ Düzenle", key=f"c_e_{k_id}", use_container_width=True):
+                                            st.session_state['edit_card_id'] = k_id
+                                            st.rerun()
+
+                                        if st.button("🗑️ Sil", key=f"c_d_{k_id}", use_container_width=True):
+                                            requests.delete(f"{API_URL}/kredi-kartlari/{k_id}")
+                                            st.rerun()
+                else:
+                    st.info("Henüz eklenmiş bir kartınız bulunmuyor.")
 
     # ==========================================
     # 5. SAYFA: FATURA TAKİBİ
