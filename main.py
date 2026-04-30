@@ -159,17 +159,24 @@ def fatura_ekle(f: schemas.InvoiceCreate, db: Session = Depends(get_db)):
     return yeni
 
 
-@app.put("/faturalar/{id}")
-def fatura_guncelle(id: int, f: schemas.InvoiceCreate, db: Session = Depends(get_db)):
-    eski = db.query(models.Invoice).filter(models.Invoice.invoice_id == id).first()
-    if eski:
-        eski.type = f.type;
-        eski.amount = f.amount;
-        eski.due_date = f.due_date
-        if hasattr(eski, 'card_id'): eski.card_id = f.card_id
-        db.commit();
-        return {"mesaj": "Güncellendi"}
+@app.put("/faturalar/{invoice_id}")
+def fatura_guncelle(invoice_id: int, fatura_data: schemas.InvoiceCreate, db: Session = Depends(get_db)):
+    mevcut = db.query(models.Invoice).filter(models.Invoice.invoice_id == invoice_id).first()
+    if not mevcut:
+        return {"hata": "Fatura bulunamadı"}
 
+    mevcut.type = fatura_data.type
+    mevcut.amount = fatura_data.amount
+    mevcut.due_date = fatura_data.due_date
+    mevcut.card_id = fatura_data.card_id
+    mevcut.period_year = fatura_data.period_year
+    mevcut.period_month = fatura_data.period_month
+
+    # --- İŞTE EKLENMESİ GEREKEN HAYATİ SATIR ---
+    mevcut.payment_date = fatura_data.payment_date
+
+    db.commit()
+    return mevcut
 
 @app.delete("/faturalar/{id}")
 def fatura_sil(id: int, db: Session = Depends(get_db)):
@@ -177,11 +184,16 @@ def fatura_sil(id: int, db: Session = Depends(get_db)):
     if f: db.delete(f); db.commit(); return {"m": "ok"}
 
 
-@app.put("/faturalar/ode/{id}")
-def f_ode(id: int, db: Session = Depends(get_db)):
-    f = db.query(models.Invoice).filter(models.Invoice.invoice_id == id).first()
-    if f: f.is_paid = True; db.commit(); return {"m": "ok"}
+@app.put("/faturalar/ode/{invoice_id}")
+def fatura_ode(invoice_id: int, db: Session = Depends(get_db)):
+    fatura = db.query(models.Invoice).filter(models.Invoice.invoice_id == invoice_id).first()
+    if not fatura:
+        return {"hata": "Fatura bulunamadı"}
 
+    fatura.is_paid = True
+    fatura.payment_date = datetime.now().date()  # YENİ EKLENEN AKIL
+    db.commit()
+    return {"mesaj": "Fatura ödendi"}
 
 # ==========================================
 # 4. TAKSİTLER & KARTLAR (User ID Filtreli)
@@ -247,7 +259,7 @@ def kart_sil(card_id: int, db: Session = Depends(get_db)):
 
 
 # ==========================================
-# 5. ANA ANALİZ MOTORU (User ID Filtreli)
+# 5. ANA ANALİZ MOTORU (Kusursuz Hesap Kesim Mantığı)
 # ==========================================
 @app.get("/aylik-rapor/{user_id}/{yil}/{ay}")
 def aylik_rapor_getir(user_id: int, yil: int, ay: int, db: Session = Depends(get_db)):
@@ -256,45 +268,66 @@ def aylik_rapor_getir(user_id: int, yil: int, ay: int, db: Session = Depends(get
     kart_kesim = {k.card_id: k.closing_day for k in kartlar}
     kart_isim = {k.card_id: k.card_name for k in kartlar}
 
+    # 1. DÜZELTME: Veritabanı filtresini kaldırdık. Tüm kayıtları alıp Python'da süzüyoruz.
     normal = db.query(models.Transaction, models.Category).join(models.Category).filter(
-        models.Transaction.user_id == user_id,
-        extract('year', models.Transaction.transaction_date) == yil,
-        extract('month', models.Transaction.transaction_date) == ay
+        models.Transaction.user_id == user_id
     ).all()
 
     for i, k in normal:
         tx_date = i.transaction_date
         c_id = i.card_id
         tx_yil, tx_ay = tx_date.year, tx_date.month
+
+        # Kesim tarihi kontrolü (Kart ile ödenmişse)
         if c_id and c_id in kart_kesim:
             if tx_date.day > kart_kesim[c_id]:
                 tx_ay += 1
-                if tx_ay > 12: tx_ay, tx_yil = 1, tx_yil + 1
+                if tx_ay > 12:
+                    tx_ay = 1
+                    tx_yil += 1
+
+        # Artık dönemi kaydırılmış veriyi eşleştiriyoruz
         if tx_yil == yil and tx_ay == ay:
             k_adi = kart_isim.get(c_id, "Nakit / Banka Kartı")
             sonuc.append(
                 {"tarih": tx_date, "aciklama": i.description or k.name, "kategori_adi": k.name, "tutar": i.amount,
                  "islem_turu": k.type, "kaynak": "Peşin", "kart_adi": k_adi})
 
+    # 2. DÜZELTME: Taksitler için de kart kesim mantığını uyguladık
     taksitler = db.query(models.InstallmentPlan).filter(models.InstallmentPlan.user_id == user_id).all()
     for p in taksitler:
-        k_adi = kart_isim.get(p.card_id, "Nakit / Banka Kartı")
+        c_id = p.card_id
+        k_adi = kart_isim.get(c_id, "Nakit / Banka Kartı")
         for i in range(p.installment_count):
             t_tar = p.start_date + relativedelta(months=i)
-            if t_tar.year == yil and t_tar.month == ay:
+            tx_yil, tx_ay = t_tar.year, t_tar.month
+
+            if c_id and c_id in kart_kesim:
+                if t_tar.day > kart_kesim[c_id]:
+                    tx_ay += 1
+                    if tx_ay > 12:
+                        tx_ay = 1
+                        tx_yil += 1
+
+            if tx_yil == yil and tx_ay == ay:
                 sonuc.append({"tarih": t_tar, "aciklama": f"{p.description} ({i + 1}/{p.installment_count})",
                               "kategori_adi": "Taksit", "tutar": p.total_amount / p.installment_count,
                               "islem_turu": "Gider", "kaynak": "Taksit", "kart_adi": k_adi})
 
     faturalar = db.query(models.Invoice).filter(models.Invoice.user_id == user_id).all()
     for f in faturalar:
-        tx_date = f.due_date
+        # Grafikler için Ödeme Tarihini baz al (Yoksa Son Ödemeyi kullan)
+        tx_date = getattr(f, 'payment_date', None) or f.due_date
         c_id = getattr(f, 'card_id', None)
         tx_yil, tx_ay = tx_date.year, tx_date.month
+
         if c_id and c_id in kart_kesim:
             if tx_date.day > kart_kesim[c_id]:
                 tx_ay += 1
-                if tx_ay > 12: tx_ay, tx_yil = 1, tx_yil + 1
+                if tx_ay > 12:
+                    tx_ay = 1
+                    tx_yil += 1
+
         if tx_yil == yil and tx_ay == ay:
             k_adi = kart_isim.get(c_id, "Nakit / Banka Kartı")
             sonuc.append(

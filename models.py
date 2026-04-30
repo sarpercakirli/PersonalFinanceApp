@@ -70,3 +70,6 @@ class Invoice(Base):
     is_paid = Column(Boolean, default=False)
     # İŞTE EKSİK OLAN HAYATİ SATIR:
     card_id = Column(Integer, ForeignKey("CreditCards.card_id"), nullable=True)
+    period_year = Column(Integer)
+    period_month = Column(Integer)
+    payment_date = Column(Date, nullable=True)

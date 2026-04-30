@@ -44,7 +44,10 @@ class InvoiceCreate(BaseModel):
     amount: float
     due_date: str
     is_paid: bool = False
-    card_id: Optional[int] = None  # YENİ EKLENEN SATIR
+    card_id: Optional[int] = None
+    period_year: int
+    period_month: int
+    payment_date: Optional[str] = None
 
 class UserLogin(BaseModel):
     username: str

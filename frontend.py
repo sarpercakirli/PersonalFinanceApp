@@ -1,10 +1,18 @@
 import streamlit as st
+from PIL import Image
 import requests
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
 
-st.set_page_config(page_title="Kişisel Finans Asistanı", page_icon="💸", layout="wide")
+favicon = Image.open("logo_seffaf.png") # Resmin adını ne koyduysan buraya yaz
+
+st.set_page_config(
+    page_title="Kişisel Finans",
+    page_icon=favicon, # Emojiyi sildik, yerine resmi koyduk
+    layout="wide"
+)
+
 API_URL = "https://personalfinanceapp-f3d9.onrender.com"
 #API_URL = "http://127.0.0.1:8000"
 
@@ -103,9 +111,19 @@ else:
     # ==========================================
     if sayfa == "📊 Genel Bakış":
         st.title("📊 Aylık Finansal Analiz")
+
+        # UX DOKUNUŞU: Kullanıcıyı hesap kesim mantığı hakkında bilgilendiriyoruz
+        st.info(
+            "💡 **Bilgi:** Bu sayfadaki veriler standart takvim aylarına göre değil, kredi kartlarınızın **hesap kesim tarihlerine (ekstre dönemlerine)** göre hesaplanmaktadır.")
+
         c1, c2 = st.columns(2)
         secilen_yil = c1.selectbox("Yıl", [2025, 2026, 2027], index=1)
-        secilen_ay = c2.selectbox("Ay", list(range(1, 13)), index=datetime.now().month - 1)
+
+        # AYLARI İSİMLENDİRME: Sadece rakam yerine ay isimlerini kullanmak UX açısından daha profesyoneldir
+        aylar = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
+        secilen_ay_isim = c2.selectbox("Dönem (Ay)", list(aylar.values()), index=datetime.now().month - 1)
+        secilen_ay = list(aylar.keys())[list(aylar.values()).index(secilen_ay_isim)]
 
         rapor_res = requests.get(f"{API_URL}/aylik-rapor/{USER_ID}/{secilen_yil}/{secilen_ay}")
         if rapor_res.status_code == 200 and isinstance(rapor_res.json(), list):
@@ -116,9 +134,9 @@ else:
                 aylik_net = aylik_gelir - aylik_gider
 
                 m1, m2, m3 = st.columns(3)
-                m1.metric("🟢 Aylık Gelir", f"{aylik_gelir:,.2f} ₺")
-                m2.metric("🔴 Aylık Gider", f"{aylik_gider:,.2f} ₺")
-                m3.metric("🔵 Aylık Net Durum", f"{aylik_net:,.2f} ₺", delta=f"{aylik_net:,.2f} ₺")
+                m1.metric("🟢 Dönem Geliri", f"{aylik_gelir:,.2f} ₺")
+                m2.metric("🔴 Dönem Gideri", f"{aylik_gider:,.2f} ₺")
+                m3.metric("🔵 Dönem Net Durumu", f"{aylik_net:,.2f} ₺", delta=f"{aylik_net:,.2f} ₺")
                 st.markdown("---")
 
                 r1c1, r1c2 = st.columns(2)
@@ -146,7 +164,7 @@ else:
                                  showarrow=False)])
                         st.plotly_chart(fig2, use_container_width=True)
                     else:
-                        st.info("Fatura yok.")
+                        st.info("Bu döneme ait fatura yok.")
 
                 with r2c1:
                     st.subheader("Taksit Detayı")
@@ -159,7 +177,7 @@ else:
                                  showarrow=False)])
                         st.plotly_chart(fig3, use_container_width=True)
                     else:
-                        st.info("Taksit yok.")
+                        st.info("Bu döneme ait taksit yok.")
 
                 with r2c2:
                     st.subheader("Kart Bazlı Dağılım")
@@ -171,7 +189,7 @@ else:
                                  showarrow=False)])
                         st.plotly_chart(fig4, use_container_width=True)
             else:
-                st.info("Bu ay için işlem bulunmuyor.")
+                st.info("Bu dönem için herhangi bir işlem bulunmuyor.")
 
     # ==========================================
     # 2. SAYFA: GELİR YÖNETİMİ
@@ -180,7 +198,13 @@ else:
         st.title("📈 Gelir Kayıtları")
         c_f1, c_f2 = st.columns(2)
         f_yil = c_f1.selectbox("Yıl", [2025, 2026, 2027], index=1, key="g_yil")
-        f_ay = c_f2.selectbox("Ay", list(range(1, 13)), index=datetime.now().month - 1, key="g_ay")
+
+        # AY İSİMLENDİRMESİ
+        aylar = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
+        secilen_ay_isim = c_f2.selectbox("Dönem (Ay)", list(aylar.values()), index=datetime.now().month - 1,
+                                         key="g_ay_isim")
+        f_ay = list(aylar.keys())[list(aylar.values()).index(secilen_ay_isim)]
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -199,11 +223,19 @@ else:
                                             "transaction_date": str(tarih), "description": desc})
                         st.rerun()
         with col2:
-            st.subheader(f"Gelir Listesi ({f_ay}/{f_yil})")
+            st.subheader(f"Gelir Listesi ({secilen_ay_isim} Dönemi)")
             if not df_bilesik.empty and "type" in df_bilesik.columns:
                 filtrelenmis = df_bilesik[
-                    (df_bilesik["type"] == "Gelir") & (df_bilesik["transaction_date"].dt.year == f_yil) & (
-                                df_bilesik["transaction_date"].dt.month == f_ay)].sort_values(by="transaction_date")
+                    (df_bilesik["type"] == "Gelir") &
+                    (df_bilesik["transaction_date"].dt.year == f_yil) &
+                    (df_bilesik["transaction_date"].dt.month == f_ay)
+                    ].sort_values(by="transaction_date")
+
+                # YENİ ÖZELLİK: DÖNEM TOPLAMI GÖSTERGESİ
+                donem_toplami = filtrelenmis['amount'].sum() if not filtrelenmis.empty else 0.0
+                st.metric(label="📌 Bu Dönemin Toplam Geliri", value=f"{donem_toplami:,.2f} ₺")
+                st.markdown("---")
+
                 if not filtrelenmis.empty:
                     for index, satir in filtrelenmis.iterrows():
                         islem_id = satir['transaction_id']
@@ -254,16 +286,25 @@ else:
                                             requests.delete(f"{API_URL}/islemler/{islem_id}")
                                             st.rerun()
                 else:
-                    st.info("Bu aya ait gelir yok.")
+                    st.info("Bu döneme ait gelir yok.")
 
     # ==========================================
     # 3. SAYFA: GİDER YÖNETİMİ
     # ==========================================
     elif sayfa == "📉 Gider Yönetimi":
         st.title("📉 Gider Kayıtları")
+        st.info(
+            "💡 **Bilgi:** Giderleriniz takvim aylarına göre değil, kredi kartlarınızın **hesap kesim tarihlerine (ekstre dönemlerine)** göre listelenmektedir.")
+
         c_f1, c_f2 = st.columns(2)
         f_yil = c_f1.selectbox("Yıl", [2025, 2026, 2027], index=1, key="gid_yil")
-        f_ay = c_f2.selectbox("Ay", list(range(1, 13)), index=datetime.now().month - 1, key="gid_ay")
+
+        # AY İSİMLENDİRMESİ (UX Geliştirmesi)
+        aylar = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
+        secilen_ay_isim = c_f2.selectbox("Dönem (Ay)", list(aylar.values()), index=datetime.now().month - 1,
+                                         key="gid_ay_isim")
+        f_ay = list(aylar.keys())[list(aylar.values()).index(secilen_ay_isim)]
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -286,15 +327,48 @@ else:
                                             "transaction_date": str(tar), "description": desc})
                         st.rerun()
         with col2:
-            st.subheader(f"Gider Listesi ({f_ay}/{f_yil})")
+            st.subheader(f"Gider Listesi ({secilen_ay_isim} Dönemi)")
+
             if not df_bilesik.empty and "type" in df_bilesik.columns:
+
+                # --- AKILLI DÖNEM HESAPLAMA MÜDAHALESİ BAŞLANGICI ---
+                kart_kesim = {k['card_id']: k['closing_day'] for k in kartlar}
+
+
+                def donem_hesapla(row):
+                    t_tar = row['transaction_date']
+                    cid = row.get('card_id')
+                    y, m = t_tar.year, t_tar.month
+                    if pd.notna(cid) and cid in kart_kesim:
+                        if t_tar.day > kart_kesim[cid]:
+                            m += 1
+                            if m > 12:
+                                m = 1
+                                y += 1
+                    return pd.Series([y, m])
+
+
+                # df_bilesik tablosuna 'donem_yil' ve 'donem_ay' adında iki yeni kolon öğretiyoruz
+                df_bilesik[['donem_yil', 'donem_ay']] = df_bilesik.apply(donem_hesapla, axis=1)
+
+                # Filtrelemeyi artık standart 'transaction_date' ile değil, yeni öğrettiğimiz dönem kolonları ile yapıyoruz
                 filtrelenmis = df_bilesik[
-                    (df_bilesik["type"] == "Gider") & (df_bilesik["transaction_date"].dt.year == f_yil) & (
-                                df_bilesik["transaction_date"].dt.month == f_ay)].sort_values(by="transaction_date")
+                    (df_bilesik["type"] == "Gider") &
+                    (df_bilesik["donem_yil"] == f_yil) &
+                    (df_bilesik["donem_ay"] == f_ay)
+                    ].sort_values(by="transaction_date")
+                # --- MÜDAHALE BİTİŞİ ---
+
+                # YENİ ÖZELLİK: DÖNEM TOPLAMI GÖSTERGESİ
+                donem_toplami = filtrelenmis['amount'].sum() if not filtrelenmis.empty else 0.0
+                st.metric(label="📌 Bu Dönemin Toplam Gideri", value=f"{donem_toplami:,.2f} ₺")
+                st.markdown("---")
+
                 if not filtrelenmis.empty:
                     for index, satir in filtrelenmis.iterrows():
                         islem_id = satir['transaction_id']
                         with st.container(border=True):
+                            # ... BUNDAN SONRASI SENİN MEVCUT DÜZENLEME VE SİLME KODLARINLA BİREBİR AYNI ...
                             if st.session_state.get('edit_id') == islem_id:
                                 mevcut = next((i for i in islemler if i['transaction_id'] == islem_id), None)
                                 k_idx = [k['category_id'] for k in gider_kat].index(mevcut['category_id']) if mevcut[
@@ -363,8 +437,7 @@ else:
                                             requests.delete(f"{API_URL}/islemler/{islem_id}")
                                             st.rerun()
                 else:
-                    st.info("Bu aya ait gider yok.")
-
+                    st.info("Bu döneme ait gider yok.")
     # ==========================================
     # 4. KART & TAKSİT
     # ==========================================
@@ -475,9 +548,17 @@ else:
     # ==========================================
     elif sayfa == "🧾 Fatura Takibi":
         st.title("🧾 Fatura Yönetimi")
+        st.info(
+            "💡 **Bilgi:** Faturalar ait oldukları 'Fatura Dönemine' göre listelenir. Ancak ödendiklerinde, 'Ödeme Yapılan Tarih' ve kartın 'Hesap Kesim Tarihine' göre harcama grafiklerine yansırlar.")
+
         c_f1, c_f2 = st.columns(2)
         f_yil = c_f1.selectbox("Yıl", [2025, 2026, 2027], index=1, key="fat_yil")
-        f_ay = c_f2.selectbox("Ay", list(range(1, 13)), index=datetime.now().month - 1, key="fat_ay")
+
+        aylar = {1: "Ocak", 2: "Şubat", 3: "Mart", 4: "Nisan", 5: "Mayıs", 6: "Haziran",
+                 7: "Temmuz", 8: "Ağustos", 9: "Eylül", 10: "Ekim", 11: "Kasım", 12: "Aralık"}
+        secilen_ay_isim = c_f2.selectbox("Listelenecek Dönem (Ay)", list(aylar.values()),
+                                         index=datetime.now().month - 1, key="fat_ay_isim")
+        f_ay = list(aylar.keys())[list(aylar.values()).index(secilen_ay_isim)]
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -486,31 +567,52 @@ else:
             if f_kat:
                 with st.form("fatura_ekle"):
                     tur = st.selectbox("Fatura Türü", [k['name'] for k in f_kat])
+
+                    st.markdown("**Ait Olduğu Dönem (Listeleme)**")
+                    fd_1, fd_2 = st.columns(2)
+                    ekle_donem_yil = fd_1.selectbox("Dönem Yılı", [2025, 2026, 2027], index=1)
+                    ekle_donem_ay_isim = fd_2.selectbox("Dönem Ayı", list(aylar.values()),
+                                                        index=datetime.now().month - 1)
+                    ekle_donem_ay = list(aylar.keys())[list(aylar.values()).index(ekle_donem_ay_isim)]
+
                     tutar = st.number_input("Tutar (₺)", min_value=0.0)
-                    tarih = st.date_input("Son Ödeme")
+                    tarih_son = st.date_input("Son Ödeme Tarihi")
+
                     o_sec = ["Nakit / Banka Kartı"] + [k['card_name'] for k in kartlar]
                     secilen_odeme = st.selectbox("Ödeme Yöntemi", o_sec)
 
                     if st.form_submit_button("Kaydet") and tutar > 0:
                         c_id = next(c['card_id'] for c in kartlar if
                                     c['card_name'] == secilen_odeme) if secilen_odeme != "Nakit / Banka Kartı" else None
+                        # Payment date formdan kaldırıldı, API'ye de gönderilmiyor.
                         requests.post(f"{API_URL}/faturalar/",
-                                      json={"user_id": USER_ID, "type": tur, "amount": tutar, "due_date": str(tarih),
-                                            "card_id": c_id})
+                                      json={"user_id": USER_ID, "type": tur, "amount": tutar,
+                                            "due_date": str(tarih_son), "card_id": c_id,
+                                            "period_year": ekle_donem_yil, "period_month": ekle_donem_ay})
                         st.rerun()
         with col2:
-            st.subheader(f"Faturalar ({f_ay}/{f_yil})")
+            st.subheader(f"Faturalar ({secilen_ay_isim} Dönemi)")
             if faturalar:
                 df_fat = pd.DataFrame(faturalar)
-                df_fat['due_date'] = pd.to_datetime(df_fat['due_date'])
-                filtrelenmis = df_fat[
-                    (df_fat['due_date'].dt.year == f_yil) & (df_fat['due_date'].dt.month == f_ay)].sort_values(
-                    by="due_date")
+
+                if 'period_year' in df_fat.columns and 'period_month' in df_fat.columns:
+                    filtrelenmis = df_fat[
+                        (df_fat['period_year'] == f_yil) & (df_fat['period_month'] == f_ay)
+                        ].sort_values(by="due_date")
+                else:
+                    df_fat['due_date'] = pd.to_datetime(df_fat['due_date'])
+                    filtrelenmis = df_fat[(df_fat['due_date'].dt.year == f_yil) & (df_fat['due_date'].dt.month == f_ay)]
+
+                donem_toplami = filtrelenmis['amount'].sum() if not filtrelenmis.empty else 0.0
+                st.metric(label="📌 Bu Dönemin Toplam Faturası", value=f"{donem_toplami:,.2f} ₺")
+                st.markdown("---")
+
                 if not filtrelenmis.empty:
                     for index, f in filtrelenmis.iterrows():
                         f_id = f['invoice_id']
                         with st.container(border=True):
                             if st.session_state.get('edit_id') == f_id:
+                                # --- DÜZENLEME EKRANI ---
                                 mevcut = next((inv for inv in faturalar if inv['invoice_id'] == f_id), None)
                                 k_idx = [k['name'] for k in f_kat].index(mevcut['type']) if mevcut['type'] in [k['name']
                                                                                                                for k in
@@ -518,11 +620,40 @@ else:
 
                                 d_tur = st.selectbox("Fatura Türü", [k['name'] for k in f_kat], index=k_idx,
                                                      key=f"f_k_{f_id}")
+
+                                fd_d1, fd_d2 = st.columns(2)
+                                d_d_yil = fd_d1.selectbox("Dönem Yılı", [2025, 2026, 2027],
+                                                          index=[2025, 2026, 2027].index(
+                                                              mevcut.get('period_year', f_yil)), key=f"f_dy_{f_id}")
+                                m_ay_isim = aylar[mevcut.get('period_month', f_ay)]
+                                d_d_ay_isim = fd_d2.selectbox("Dönem Ayı", list(aylar.values()),
+                                                              index=list(aylar.values()).index(m_ay_isim),
+                                                              key=f"f_da_{f_id}")
+                                d_d_ay = list(aylar.keys())[list(aylar.values()).index(d_d_ay_isim)]
+
                                 d_tut = st.number_input("Tutar", min_value=0.0, value=float(mevcut['amount']),
                                                         key=f"f_t_{f_id}")
-                                d_tar = st.date_input("Son Ödeme",
-                                                      value=datetime.strptime(mevcut['due_date'].split("T")[0],
-                                                                              '%Y-%m-%d'), key=f"f_d_{f_id}")
+
+                                # Tarihler
+                                date_str = mevcut['due_date'].split("T")[0] if isinstance(mevcut['due_date'], str) else \
+                                mevcut['due_date'].strftime('%Y-%m-%d')
+                                d_tar_son = st.date_input("Son Ödeme Tarihi",
+                                                          value=datetime.strptime(date_str, '%Y-%m-%d'),
+                                                          key=f"f_ds_{f_id}")
+
+                                # YENİ MANTIK: Sadece fatura ödenmişse Ödeme Tarihini düzenlemeye aç
+                                d_tar_odeme = None
+                                if mevcut.get('is_paid'):
+                                    p_date_raw = mevcut.get('payment_date')
+                                    if pd.isna(p_date_raw) or p_date_raw is None:
+                                        p_date_raw = mevcut['due_date']
+
+                                    p_date_str = p_date_raw.split("T")[0] if isinstance(p_date_raw,
+                                                                                        str) else p_date_raw.strftime(
+                                        '%Y-%m-%d')
+                                    d_tar_odeme = st.date_input("Ödeme Yapılan Tarih",
+                                                                value=datetime.strptime(p_date_str, '%Y-%m-%d'),
+                                                                key=f"f_po_{f_id}")
 
                                 m_kart = "Nakit / Banka Kartı"
                                 if mevcut.get('card_id'):
@@ -538,30 +669,50 @@ else:
                                 if cb1.button("💾 Güncelle", key=f"f_s_{f_id}", use_container_width=True):
                                     c_id = next(c['card_id'] for c in kartlar if
                                                 c['card_name'] == d_odeme) if d_odeme != "Nakit / Banka Kartı" else None
-                                    requests.put(f"{API_URL}/faturalar/{f_id}",
-                                                 json={"user_id": USER_ID, "type": d_tur, "amount": d_tut,
-                                                       "due_date": str(d_tar), "card_id": c_id})
+
+                                    update_payload = {"user_id": USER_ID, "type": d_tur, "amount": d_tut,
+                                                      "due_date": str(d_tar_son), "card_id": c_id,
+                                                      "period_year": d_d_yil, "period_month": d_d_ay}
+                                    if d_tar_odeme:
+                                        update_payload["payment_date"] = str(d_tar_odeme)
+
+                                    requests.put(f"{API_URL}/faturalar/{f_id}", json=update_payload)
                                     st.session_state['edit_id'] = None
                                     st.rerun()
                                 if cb2.button("❌ İptal", key=f"f_i_{f_id}", use_container_width=True):
                                     st.session_state['edit_id'] = None
                                     st.rerun()
                             else:
+                                # --- NORMAL GÖRÜNÜM MODU ---
                                 c_i1, c_i2, c_i3, c_i4 = st.columns([3, 2, 3, 1])
-                                tarih_str = f['due_date'].strftime('%Y-%m-%d')
+                                tarih_str = f['due_date'].split("T")[0] if isinstance(f['due_date'], str) else f[
+                                    'due_date'].strftime('%Y-%m-%d')
                                 k_isim = "Nakit"
                                 if f.get('card_id') and not pd.isna(f['card_id']):
                                     k_isim = next((k['card_name'] for k in kartlar if k['card_id'] == f['card_id']),
                                                   "Nakit")
 
+                                p_ay = aylar.get(f.get('period_month', f_ay), "")
+                                p_yil = f.get('period_year', f_yil)
+
                                 if f['is_paid']:
-                                    c_i1.markdown(f"✅ **{f['type']}**<br><small>{tarih_str}</small>",
-                                                  unsafe_allow_html=True)
+                                    odeme_raw = f.get('payment_date')
+                                    if pd.notna(odeme_raw) and odeme_raw is not None:
+                                        odeme_str = odeme_raw.split("T")[0] if isinstance(odeme_raw,
+                                                                                          str) else odeme_raw.strftime(
+                                            '%Y-%m-%d')
+                                    else:
+                                        odeme_str = tarih_str
+
+                                    c_i1.markdown(
+                                        f"✅ **{f['type']}** ({p_ay} {p_yil})<br><small>Son: {tarih_str} | Ödendi: {odeme_str}</small>",
+                                        unsafe_allow_html=True)
                                     c_i2.markdown(f"<h4 style='color: #2e7d32; margin:0;'>{f['amount']:,.2f} ₺</h4>",
                                                   unsafe_allow_html=True)
                                 else:
-                                    c_i1.markdown(f"⏳ **{f['type']}**<br><small>{tarih_str}</small>",
-                                                  unsafe_allow_html=True)
+                                    c_i1.markdown(
+                                        f"⏳ **{f['type']}** ({p_ay} {p_yil})<br><small>Son Ödeme: {tarih_str}</small>",
+                                        unsafe_allow_html=True)
                                     c_i2.markdown(f"<h4 style='color: #ef6c00; margin:0;'>{f['amount']:,.2f} ₺</h4>",
                                                   unsafe_allow_html=True)
 
@@ -580,7 +731,10 @@ else:
                                             requests.delete(f"{API_URL}/faturalar/{f_id}")
                                             st.rerun()
                 else:
-                    st.info("Fatura yok.")
+                    st.info("Bu döneme ait fatura yok.")
+    #======================
+    # 5. SAYFA : KATEGORİ YÖNETİMİ
+    #======================
 
     elif sayfa == "⚙️ Kategori Yönetimi":
         st.title("⚙️ Kategori Ayarları")
