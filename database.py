@@ -11,7 +11,11 @@ load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Bulut veritabanına bağlanma motoru
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_pre_ping=True,      # İstek atmadan önce bağlantı yaşıyor mu diye kontrol et
+    pool_recycle=1800        # Bağlantıları her 30 dakikada bir (1800 saniye) yenile
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
