@@ -78,7 +78,7 @@ else:
         st.rerun()
 
     sayfa = st.sidebar.radio("Bölüm Seçin:",
-                             ["📊 Genel Bakış", "📈 Gelir Yönetimi", "📉 Gider Yönetimi", "💳 Kart & Taksit",
+                             ["📊 Genel Bakış", "🔎 Trend Analizi", "📈 Gelir Yönetimi", "📉 Gider Yönetimi", "💳 Kart & Taksit",
                               "🧾 Fatura Takibi", "⚙️ Kategori Yönetimi"])
 
 
@@ -190,6 +190,91 @@ else:
                         st.plotly_chart(fig4, use_container_width=True)
             else:
                 st.info("Bu dönem için herhangi bir işlem bulunmuyor.")
+
+    # ==========================================
+    # YENİ SAYFA: TREND ANALİZİ
+    # ==========================================
+    elif sayfa == "🔎 Trend Analizi":
+        st.title("📈 Kategori ve Trend Analizi")
+        st.info(
+            "💡 **Bilgi:** Bu grafikteki veriler takvim aylarına değil, harcamalarınızın **hesap kesim (ekstre) dönemlerine** göre zaman içindeki değişimini gösterir.")
+
+        # df_bilesik tablosunun dolu olduğundan emin olalım
+        if not df_bilesik.empty and "type" in df_bilesik.columns:
+
+            # --- AKILLI DÖNEM HESAPLAMASI (Tüm Geçmiş Veriler İçin) ---
+            kart_kesim = {k['card_id']: k['closing_day'] for k in kartlar}
+            ay_isimleri = {1: "Oca", 2: "Şub", 3: "Mar", 4: "Nis", 5: "May", 6: "Haz",
+                           7: "Tem", 8: "Ağu", 9: "Eyl", 10: "Eki", 11: "Kas", 12: "Ara"}
+
+
+            def trend_donem_hesapla(row):
+                t_tar = row['transaction_date']
+                cid = row.get('card_id')
+                y, m = t_tar.year, t_tar.month
+                if pd.notna(cid) and cid in kart_kesim:
+                    if t_tar.day > kart_kesim[cid]:
+                        m += 1
+                        if m > 12:
+                            m = 1
+                            y += 1
+
+                # Grafiğin X ekseninde kronolojik sıralanabilmesi için YYYY-MM formatı oluşturuyoruz
+                donem_sirasi = f"{y}-{m:02d}"
+                # Ekranda güzel görünmesi için etiket oluşturuyoruz (Örn: May 2026)
+                donem_etiketi = f"{ay_isimleri[m]} {y}"
+                return pd.Series([donem_sirasi, donem_etiketi])
+
+
+            # Ana tablonun kopyası üzerinde çalışıyoruz ki diğer sayfaları etkilemesin
+            df_trend = df_bilesik.copy()
+            df_trend[['donem_sirasi', 'donem_etiketi']] = df_trend.apply(trend_donem_hesapla, axis=1)
+
+            st.markdown("---")
+
+            # Sadece giderleri alıyoruz (Trend genelde harcamalar için merak edilir)
+            df_giderler = df_trend[df_trend["type"] == "Gider"]
+
+            if not df_giderler.empty:
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.subheader("Kategori Bazlı Harcama Trendi")
+                    # Kullanıcının daha önce harcama yaptığı kategorileri benzersiz olarak listeliyoruz
+                    kategori_listesi = sorted(df_giderler['name'].dropna().unique().tolist())
+                    secilen_kat = st.selectbox("İncelemek İstediğiniz Kategori", kategori_listesi)
+
+                    # Seçilen kategoriye göre veriyi filtreleyip dönem bazında topluyoruz
+                    kat_df = df_giderler[df_giderler['name'] == secilen_kat]
+                    kat_grup = kat_df.groupby(['donem_sirasi', 'donem_etiketi'], as_index=False)['amount'].sum()
+                    kat_grup = kat_grup.sort_values(by='donem_sirasi')
+
+                    if not kat_grup.empty:
+                        fig1 = px.line(kat_grup, x="donem_etiketi", y="amount", markers=True,
+                                       title=f"{secilen_kat} Aylık Gelişim",
+                                       labels={"donem_etiketi": "Dönem", "amount": "Toplam Harcama (₺)"})
+                        fig1.update_traces(line_color="#1976D2", line_width=3, marker_size=8)
+                        st.plotly_chart(fig1, use_container_width=True)
+                    else:
+                        st.info("Bu kategori için yeterli veri yok.")
+
+                with col2:
+                    st.subheader("Toplam Gider Trendi")
+                    st.write("<br>", unsafe_allow_html=True)  # Kategori seçici ile aynı hizada durması için boşluk
+
+                    # Tüm giderleri dönem bazında topluyoruz
+                    genel_grup = df_giderler.groupby(['donem_sirasi', 'donem_etiketi'], as_index=False)['amount'].sum()
+                    genel_grup = genel_grup.sort_values(by='donem_sirasi')
+
+                    fig2 = px.line(genel_grup, x="donem_etiketi", y="amount", markers=True,
+                                   title="Aydan Aya Toplam Harcama",
+                                   labels={"donem_etiketi": "Dönem", "amount": "Toplam Harcama (₺)"})
+                    fig2.update_traces(line_color="#D32F2F", line_width=3, marker_size=8)
+                    st.plotly_chart(fig2, use_container_width=True)
+            else:
+                st.warning("Trend analizi yapabilmek için henüz hiç gider kaydınız bulunmuyor.")
+        else:
+            st.warning("Sistemde işlem verisi bulunamadı.")
 
     # ==========================================
     # 2. SAYFA: GELİR YÖNETİMİ
@@ -466,24 +551,73 @@ else:
                                                 "installment_count": int(t_sayisi), "start_date": str(t_tarih)})
                             st.rerun()
             with col2:
-                st.subheader("İlerleme Durumu")
+                st.subheader("Taksit Takibi")
                 if taksitler:
                     bugun = datetime.today()
+                    kart_kesim = {k['card_id']: k['closing_day'] for k in kartlar}
+
+                    aktif_taksitler = []
+                    biten_taksitler = []
+
+                    # 1. Önce taksitleri ayıklayalım
                     for t in taksitler:
                         try:
+                            c_id = t.get('card_id')
+                            kesim = kart_kesim.get(c_id, 31)
                             bas_tar = datetime.strptime(t['start_date'], '%Y-%m-%d')
-                            gecen_ay = (bugun.year - bas_tar.year) * 12 + bugun.month - bas_tar.month
-                            odenen = min(max(gecen_ay + 1, 0), t['installment_count'])
-                            oran = odenen / t['installment_count']
-                        except:
-                            oran, odenen = 0.0, 0
 
-                        with st.expander(f"📦 {t['description']} - Toplam: {t['total_amount']:,.2f} ₺"):
-                            st.write(f"Başlangıç: {t['start_date']}")
-                            st.progress(oran, text=f"{odenen} / {t['installment_count']} Taksit Ödendi")
-                            if st.button("🗑️ Planı Sil", key=f"s_{t['plan_id']}"):
-                                requests.delete(f"{API_URL}/taksit-planlari/{t['plan_id']}")
-                                st.rerun()
+                            # Taksitin ilk dönemini bul
+                            ilk_t_ay, ilk_t_yil = bas_tar.month, bas_tar.year
+                            if bas_tar.day > kesim:
+                                ilk_t_ay += 1
+                                if ilk_t_ay > 12: ilk_t_ay, ilk_t_yil = 1, ilk_t_yil + 1
+
+                            # Güncel dönemi bul
+                            bugun_ay, bugun_yil = bugun.month, bugun.year
+                            if bugun.day > kesim:
+                                bugun_ay += 1
+                                if bugun_ay > 12: bugun_ay, bugun_yil = 1, bugun_yil + 1
+
+                            gecen_donem = (bugun_yil - ilk_t_yil) * 12 + bugun_ay - ilk_t_ay
+                            odenen = min(max(gecen_donem + 1, 0), t['installment_count'])
+                            t['odenen_sayisi'] = odenen
+                            t['oran'] = odenen / t['installment_count']
+
+                            if odenen >= t['installment_count']:
+                                biten_taksitler.append(t)
+                            else:
+                                aktif_taksitler.append(t)
+                        except:
+                            continue
+
+                    # 2. Aktif Taksitleri Göster
+                    st.markdown("##### 🚀 Devam Eden Taksitler")
+                    if aktif_taksitler:
+                        for t in aktif_taksitler:
+                            with st.expander(f"📦 {t['description']} - {t['total_amount']:,.2f} ₺"):
+                                st.write(f"Alışveriş Tarihi: {t['start_date']}")
+                                st.progress(t['oran'], text=f"{t['odenen_sayisi']} / {t['installment_count']} Taksit")
+                                if st.button("🗑️ Planı Sil", key=f"s_{t['plan_id']}"):
+                                    requests.delete(f"{API_URL}/taksit-planlari/{t['plan_id']}")
+                                    st.rerun()
+                    else:
+                        st.success("Tüm taksitler bitmiş veya henüz taksit eklenmemiş!")
+
+                    st.markdown("---")
+
+                    # 3. Biten Taksitleri Göster (Arşiv)
+                    with st.expander("📁 Biten Taksit Arşivi"):
+                        if biten_taksitler:
+                            for t in biten_taksitler:
+                                col_a, col_b = st.columns([4, 1])
+                                col_a.write(f"✅ **{t['description']}** ({t['total_amount']:,.2f} ₺)")
+                                if col_b.button("🗑️", key=f"del_arc_{t['plan_id']}", help="Arşivden Sil"):
+                                    requests.delete(f"{API_URL}/taksit-planlari/{t['plan_id']}")
+                                    st.rerun()
+                        else:
+                            st.info("Henüz tamamlanmış bir taksit planı bulunmuyor.")
+                else:
+                    st.info("Henüz eklenmiş bir taksit planınız bulunmuyor.")
 
         with t2:
             c1, c2 = st.columns([1, 2])

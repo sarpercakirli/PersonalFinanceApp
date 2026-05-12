@@ -205,11 +205,11 @@ def taksit_getir(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/taksit-planlari/")
 def taksit_ekle(p: schemas.InstallmentPlanCreate, db: Session = Depends(get_db)):
-    kart = db.query(models.CreditCard).filter(models.CreditCard.card_id == p.card_id).first()
-    if kart and p.start_date.day > kart.closing_day: p.start_date = p.start_date + relativedelta(months=1)
-    yeni = models.InstallmentPlan(**p.dict());
-    db.add(yeni);
-    db.commit();
+    # Çifte kaydırmaya sebep olan "if kart and p.start_date.day > kart.closing_day..." satırını tamamen SİLDİK!
+
+    yeni = models.InstallmentPlan(**p.dict())
+    db.add(yeni)
+    db.commit()
     return yeni
 
 
